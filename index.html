@@ -1,7 +1,61 @@
 <!doctype html>
-<html lang="ja"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>星灯りの旅人</title>
-<style> *{box-sizing:border-box}body{margin:0;background:#0b1220;color:#f4ead0;font:16px system-ui}main{max-width:1000px;margin:auto;padding:24px}header{display:flex;align-items:center;justify-content:space-between}h1{font-size:25px;letter-spacing:.15em}small{color:#b2c3cd}canvas{display:block;width:100%;background:#243e39;image-rendering:pixelated;border:4px solid #b39c64;border-radius:6px}.panel{border:1px solid #667275;background:#151f30;border-radius:8px;padding:18px;margin:14px 0}#log{min-height:70px;line-height:1.8}button{border:1px solid #a08e64;background:#243249;color:#fff3d5;padding:12px 22px;border-radius:5px;cursor:pointer;font:inherit}button:hover{background:#3a4e64}button:disabled{opacity:.35}#actions{display:flex;gap:8px;flex-wrap:wrap}#pad{display:grid;grid-template-columns:repeat(3,55px);gap:5px;justify-content:center;margin-top:16px}#pad button{padding:12px}footer{font-size:13px;color:#a4b7bd;margin:18px 0}#stats{color:#edce88}.tag{font-size:12px;letter-spacing:.15em;color:#9dc5bd} @media(max-width:600px){main{padding:12px}h1{font-size:20px}header{display:block}}</style>
-<main><header><div><div class="tag">A SMALL FANTASY ADVENTURE</div><h1>星灯りの旅人</h1></div><small>星をなくした森に、灯りを。</small></header><div class="panel" id="stats"></div><canvas id="world" width="640" height="384" aria-label="冒険の地図"></canvas><div class="panel"><div id="log" aria-live="polite"></div><div id="actions"></div></div><div id="pad"><span></span><button data-dir="0,-1">↑</button><span></span><button data-dir="-1,0">←</button><button id="talk">調査</button><button data-dir="1,0">→</button><span></span><button data-dir="0,1">↓</button></div><footer>移動：矢印 / WASD　会話・調べる：Space / Enter　｜　1歩歩くとマップの魔物も1歩移動。触れると戦闘！進行は自動保存されます。<br>宝箱：「調べる」かSpaceで探索すると、まれに発見。同じ場所は1回のみ。階段では「上る・降りる」ボタンで移動。<br>目的：森の北東から地下へ入り、地上〜地下2階を「調べる」で探索して隠された星の鍵を見つけ、地下3階の星の宝箱を開けよう。地上＋地下3階、各40×26マス。</footer><button id="reset">はじめから</button></main>
+<html lang="ja"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>星灯りの旅人</title>
+<style> *{box-sizing:border-box}body{margin:0;background:#0b1220;color:#f4ead0;font:16px system-ui}main{max-width:1000px;margin:auto;padding:24px}header{display:flex;align-items:center;justify-content:space-between}h1{font-size:25px;letter-spacing:.15em}small{color:#b2c3cd}canvas{display:block;width:100%;background:#243e39;image-rendering:pixelated;border:4px solid #b39c64;border-radius:6px}.panel{border:1px solid #667275;background:#151f30;border-radius:8px;padding:18px;margin:14px 0}#log{min-height:70px;line-height:1.8}button{border:1px solid #a08e64;background:#243249;color:#fff3d5;padding:12px 22px;border-radius:5px;cursor:pointer;font:inherit}button:hover{background:#3a4e64}button:disabled{opacity:.35}#actions{display:flex;gap:8px;flex-wrap:wrap}#pad{display:grid;grid-template-columns:repeat(3,55px);gap:5px;justify-content:center;margin-top:16px}#pad button{padding:12px}footer{font-size:13px;color:#a4b7bd;margin:18px 0}#stats{color:#edce88}.tag{font-size:12px;letter-spacing:.15em;color:#9dc5bd} @media(max-width:600px){main{padding:12px}h1{font-size:20px}header{display:block}}
+/* Responsive controls are presentation only; the game script is unchanged. */
+#mobile-help{display:none}
+button:focus-visible,summary:focus-visible{outline:3px solid #a9dfed;outline-offset:3px}
+@media (max-width:760px), (max-height:600px) and (pointer:coarse){
+ html,body{height:100%;overflow:hidden;overscroll-behavior:none}
+ body{--key-size:56px;--key-gap:8px;--pad-height:calc(var(--key-size)*3 + var(--key-gap)*2 + 16px + env(safe-area-inset-bottom,0px));font-size:14px}
+ main{display:grid;grid-template-rows:auto auto minmax(0,1fr) minmax(104px,.65fr);gap:6px;width:100%;max-width:none;height:100vh;height:100dvh;margin:0;padding:calc(6px + env(safe-area-inset-top,0px)) max(8px,env(safe-area-inset-right,0px)) calc(var(--pad-height) + 6px) max(8px,env(safe-area-inset-left,0px));overflow:hidden}
+ header{display:flex;align-items:center;justify-content:space-between;gap:8px;min-width:0}
+ header .tag,header>small{display:none}
+ h1{margin:0;font-size:18px;line-height:1.4;letter-spacing:.08em}
+ .panel{min-width:0;min-height:0;margin:0;padding:8px;border-radius:6px}
+ #stats{font-size:12px;line-height:1.5;overflow-wrap:anywhere}
+ #world{min-width:0;min-height:0;width:100%;height:100%;object-fit:contain;background:#0e1926;border-width:2px}
+ #message-panel{display:flex;flex-direction:column;gap:6px;overflow:hidden;overscroll-behavior:contain;scrollbar-width:thin;touch-action:pan-y}
+ #log{flex:1 1 auto;min-height:22px;overflow-y:auto;overscroll-behavior:contain;font-size:13px;line-height:1.5;overflow-wrap:anywhere}
+ #actions{flex:0 1 auto;min-height:44px;max-height:calc(100% - 28px);overflow-y:auto;overscroll-behavior:contain;gap:6px;padding:2px}
+ button{touch-action:none;-webkit-tap-highlight-color:transparent;user-select:none;-webkit-user-select:none}
+ #actions button{min-height:44px;padding:8px 12px;flex:1 0 auto;font-size:14px}
+ #pad{position:fixed;z-index:10;left:0;right:0;bottom:0;display:grid;grid-template-columns:repeat(3,var(--key-size));grid-template-rows:repeat(3,var(--key-size));gap:var(--key-gap);align-content:start;justify-content:center;margin:0;padding:8px max(8px,env(safe-area-inset-right,0px)) calc(8px + env(safe-area-inset-bottom,0px)) max(8px,env(safe-area-inset-left,0px));height:var(--pad-height);background:#111d2e;border-top:1px solid #526575;box-shadow:0 -6px 20px #0004;touch-action:none}
+ #pad button{width:var(--key-size);height:var(--key-size);padding:0;font-size:26px;font-weight:700;border-radius:12px;box-shadow:0 3px 0 #080f19}
+ #pad #talk{font-size:15px;color:#d5eaf4;background:#31485a}
+ #pad button:active,#actions button:active{background:#55768a;transform:translateY(2px);box-shadow:none}
+ footer{display:none}
+ #reset{position:fixed;z-index:11;right:max(8px,env(safe-area-inset-right,0px));bottom:calc(8px + env(safe-area-inset-bottom,0px));max-width:82px;min-height:44px;padding:7px;font-size:11px;background:#172538}
+ #mobile-help{display:block;font-size:12px}
+ #mobile-help summary{list-style:none;min-height:32px;padding:6px 10px;border:1px solid #667275;border-radius:6px;cursor:pointer;touch-action:manipulation}
+ #mobile-help summary::-webkit-details-marker{display:none}
+ #mobile-help[open]>div{position:fixed;z-index:30;top:calc(44px + env(safe-area-inset-top,0px));left:max(8px,env(safe-area-inset-left,0px));right:max(8px,env(safe-area-inset-right,0px));max-height:50vh;max-height:50dvh;overflow:auto;padding:14px;line-height:1.8;background:#172538;border:1px solid #a08e64;border-radius:8px;box-shadow:0 8px 30px #0009;overscroll-behavior:contain}
+}
+/* Short portrait displays reserve less space for controls, retaining 48px targets. */
+@media (max-width:760px) and (max-height:600px){
+ body{--key-size:48px;--key-gap:6px}
+ main{gap:4px;grid-template-rows:auto auto minmax(0,1fr) minmax(94px,.55fr)}
+ h1{font-size:16px}#stats{font-size:11px;padding:5px 7px}#message-panel{padding:6px}
+ #reset{max-width:70px;font-size:10px}
+}
+/* Landscape: map on the left, commands and a bottom-fixed thumb pad on the right. */
+@media (orientation:landscape) and (max-height:600px) and (max-width:1000px){
+ html,body{height:100%;overflow:hidden;overscroll-behavior:none}
+ body{--key-size:48px;--key-gap:6px;--controls-width:204px;--pad-height:calc(var(--key-size)*3 + var(--key-gap)*2 + 16px + env(safe-area-inset-bottom,0px));font-size:14px}
+ main{display:grid;grid-template-rows:auto auto minmax(0,1fr);gap:4px;width:100%;max-width:none;height:100vh;height:100dvh;margin:0;padding:calc(6px + env(safe-area-inset-top,0px)) calc(var(--controls-width) + max(12px,env(safe-area-inset-right,0px))) max(6px,env(safe-area-inset-bottom,0px)) max(8px,env(safe-area-inset-left,0px));overflow:hidden}
+ header{display:flex;gap:8px;align-items:center;justify-content:space-between}header .tag,header>small{display:none}h1{margin:0;font-size:16px;line-height:1.4}
+ .panel{min-width:0;min-height:0;margin:0;padding:6px;border-radius:6px}#stats{font-size:11px;line-height:1.5;overflow-wrap:anywhere}
+ #world{min-width:0;min-height:0;width:100%;height:100%;object-fit:contain;background:#0e1926;border-width:2px}
+ #message-panel{position:fixed;top:calc(6px + env(safe-area-inset-top,0px));right:max(6px,env(safe-area-inset-right,0px));bottom:calc(var(--pad-height) + 6px);width:calc(var(--controls-width) - 12px);display:flex;flex-direction:column;gap:6px;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin;touch-action:pan-y}
+ #log{flex:1 1 auto;min-height:22px;overflow-y:auto;overscroll-behavior:contain;font-size:12px;line-height:1.5;overflow-wrap:anywhere}#actions{flex:0 1 auto;min-height:44px;max-height:calc(100% - 28px);overflow-y:auto;overscroll-behavior:contain;gap:6px;padding:2px}#actions button{min-height:44px;padding:8px;font-size:12px;flex:1 0 auto}
+ button{touch-action:none;-webkit-tap-highlight-color:transparent;user-select:none;-webkit-user-select:none}
+ #pad{position:fixed;z-index:10;left:auto;right:env(safe-area-inset-right,0px);bottom:0;width:var(--controls-width);height:var(--pad-height);display:grid;grid-template-columns:repeat(3,var(--key-size));grid-template-rows:repeat(3,var(--key-size));gap:var(--key-gap);align-content:start;justify-content:center;margin:0;padding:8px 0 calc(8px + env(safe-area-inset-bottom,0px));background:#111d2e;border-top:1px solid #526575;touch-action:none}
+ #pad button{width:var(--key-size);height:var(--key-size);padding:0;font-size:25px;font-weight:700;border-radius:10px;box-shadow:0 3px 0 #080f19}#pad #talk{font-size:14px;background:#31485a}#pad button:active,#actions button:active{background:#55768a;transform:translateY(2px);box-shadow:none}
+ footer{display:none}#reset{position:fixed;z-index:11;right:max(4px,env(safe-area-inset-right,0px));bottom:calc(8px + env(safe-area-inset-bottom,0px));max-width:65px;min-height:44px;padding:5px;font-size:9px;background:#172538}
+ #mobile-help{display:block;font-size:12px}#mobile-help summary{list-style:none;min-height:30px;padding:5px 8px;border:1px solid #667275;border-radius:6px;cursor:pointer}#mobile-help summary::-webkit-details-marker{display:none}
+ #mobile-help[open]>div{position:fixed;z-index:30;top:calc(40px + env(safe-area-inset-top,0px));left:max(8px,env(safe-area-inset-left,0px));right:calc(var(--controls-width) + max(12px,env(safe-area-inset-right,0px)));max-height:65vh;max-height:65dvh;overflow:auto;padding:12px;line-height:1.7;background:#172538;border:1px solid #a08e64;border-radius:8px;box-shadow:0 8px 30px #0009;overscroll-behavior:contain}
+}
+</style>
+<main><header><div><div class="tag">A SMALL FANTASY ADVENTURE</div><h1>星灯りの旅人</h1></div><small>星をなくした森に、灯りを。</small><details id="mobile-help"><summary>遊び方</summary><div>矢印で移動、中央の「調査」で足元を調べます。1歩ごとに魔物も動き、触れると戦闘！<br>村では「話す」で全回復。階段では「上る・降りる」を選びます。<br>村人のヒントを頼りに隠された鍵を「調べる」で発見し、地下3階の星の宝箱を開けるとクリア！<br>長いメッセージやコマンドは、その欄をスワイプすると続きを見られます。もう一度「遊び方」で閉じます。</div></details></header><div class="panel" id="stats"></div><canvas id="world" width="640" height="384" aria-label="冒険の地図"></canvas><div class="panel" id="message-panel"><div id="log" aria-live="polite"></div><div id="actions"></div></div><div id="pad" role="group" aria-label="移動と調査"><span></span><button aria-label="上に移動" data-dir="0,-1">↑</button><span></span><button aria-label="左に移動" data-dir="-1,0">←</button><button id="talk">調査</button><button aria-label="右に移動" data-dir="1,0">→</button><span></span><button aria-label="下に移動" data-dir="0,1">↓</button></div><footer>移動：矢印 / WASD　会話・調べる：Space / Enter　｜　1歩歩くとマップの魔物も1歩移動。触れると戦闘！進行は自動保存されます。<br>宝箱：「調べる」かSpaceで探索すると、まれに発見。同じ場所は1回のみ。階段では「上る・降りる」ボタンで移動。<br>目的：森の北東から地下へ入り、地上〜地下2階を「調べる」で探索して隠された星の鍵を見つけ、地下3階の星の宝箱を開けよう。地上＋地下3階、各40×26マス。</footer><button id="reset">はじめから</button></main>
 <script>
 const canvas=document.querySelector('canvas'),c=canvas.getContext('2d'),$=s=>document.querySelector(s);
 const MAP_W=40,MAP_H=26;
