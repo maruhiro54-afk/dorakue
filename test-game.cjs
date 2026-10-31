@@ -27,9 +27,15 @@ for(const reduced of [false,true]){
  // Contact initiated by player also starts a fight, no hidden random encounters.
  g.tick();r("p.x=3;p.y=6;motion.start=-1000;p.monsters=[{id:'test',floor:1,x:4,y:6,name:'こけ玉'}];move(1,0)");assert(r('enemy.mapId==="test"'));
  r('enemy=null;p.monsters=[];p.x=3;p.y=6;motion.start=-1000');for(let i=0;i<20;i++){g.tick();r(i%2?'move(-1,0)':'move(1,0)');assert(!r('enemy'))}
- // Key is picked up by walking onto it, then saved and restored unchanged.
- r('p.floor=p.key.floor;map=maps[p.floor];p.x=p.key.x;p.y=p.key.y;p.hasKey=false');assert(r('collectKey().length>0'));r('stats()');const restored=game(g.saved());assert(restored.run('p.hasKey'));assert.equal(restored.run('JSON.stringify(p.key)'),r('JSON.stringify(p.key)'));
+ // Key is invisible and only discovered by searching its exact tile, even if already searched.
+ r('p.floor=p.key.floor;map=maps[p.floor];p.x=p.key.x;p.y=p.key.y;p.hasKey=false;p.monsters=[]');assert(!r('p.hasKey'));r('p.searched[p.floor+":"+p.x+","+p.y]=true;search()');assert(r('p.hasKey'));r('stats()');const restored=game(g.saved());assert(restored.run('p.hasKey'));assert.equal(restored.run('JSON.stringify(p.key)'),r('JSON.stringify(p.key)'));
  r('p.floor=3;map=maps[3];p.x=35;p.y=20;p.hasKey=true;p.won=false;search()');assert(r('p.won'));r('stats()');assert(game(g.saved()).run('p.won'));
  console.log('PASS: monster turn cadence/contact/defeat/flee, no random encounters, key pickup/persistence, keyed goal clear; reduced='+reduced)
 }
 const positions=new Set();for(const roll of [.01,.2,.4,.6,.8,.99]){const g=game(null,false,roll);positions.add(g.run('JSON.stringify(p.key)'));assert(g.run("p.key.floor<3 && maps[p.key.floor][p.key.y][p.key.x]==='.'"));assert(g.run('p.monsters.length===32'));assert(g.run('!p.monsters.some(m=>m.floor===p.key.floor&&m.x===p.key.x&&m.y===p.key.y)'))}assert(positions.size>=5);console.log('PASS: new adventure randomizes key and spawns valid map monsters');
+
+const hidden=game();const hr=hidden.run;
+hr("p.floor=1;map=maps[1];p.key={floor:1,x:5,y:6};p.x=3;p.y=6;p.hasKey=false;p.monsters=[];motion.start=-1000");
+hr('move(1,0)');assert(!hr('p.hasKey'));hidden.tick();hr('move(1,0)');assert(!hr('p.hasKey'),'stepping onto key must not collect it');assert(!hidden.saved().hasKey);hr('search()');assert(hr('p.hasKey'));assert(hidden.saved().hasKey);
+hr('p.hasKey=false;p.x=4;search()');assert(!hr('p.hasKey'),'adjacent searches must not find key');hr('p.x=5;enemy={};search()');assert(!hr('p.hasKey'),'cannot search in combat');hr('enemy=null;busy=true;search()');assert(!hr('p.hasKey'));hr('busy=false;p.floor=2;map=maps[2];search()');assert(!hr('p.hasKey'),'same coordinates on wrong floor must not find key');assert(!code.includes('drawKey'),'hidden key must not be rendered');
+console.log('PASS: hidden key requires exact-tile search, never walking/adjacency/wrong floor/combat; discovery persists');
