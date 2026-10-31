@@ -1,20 +1,66 @@
 <!doctype html>
 <html lang="ja"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>星灯りの旅人</title>
 <style> *{box-sizing:border-box}body{margin:0;background:#0b1220;color:#f4ead0;font:16px system-ui}main{max-width:1000px;margin:auto;padding:24px}header{display:flex;align-items:center;justify-content:space-between}h1{font-size:25px;letter-spacing:.15em}small{color:#b2c3cd}canvas{display:block;width:100%;background:#243e39;image-rendering:pixelated;border:4px solid #b39c64;border-radius:6px}.panel{border:1px solid #667275;background:#151f30;border-radius:8px;padding:18px;margin:14px 0}#log{min-height:70px;line-height:1.8}button{border:1px solid #a08e64;background:#243249;color:#fff3d5;padding:12px 22px;border-radius:5px;cursor:pointer;font:inherit}button:hover{background:#3a4e64}button:disabled{opacity:.35}#actions{display:flex;gap:8px;flex-wrap:wrap}#pad{display:grid;grid-template-columns:repeat(3,55px);gap:5px;justify-content:center;margin-top:16px}#pad button{padding:12px}footer{font-size:13px;color:#a4b7bd;margin:18px 0}#stats{color:#edce88}.tag{font-size:12px;letter-spacing:.15em;color:#9dc5bd} @media(max-width:600px){main{padding:12px}h1{font-size:20px}header{display:block}}</style>
-<main><header><div><div class="tag">A SMALL FANTASY ADVENTURE</div><h1>星灯りの旅人</h1></div><small>星をなくした森に、灯りを。</small></header><div class="panel" id="stats"></div><canvas id="world" width="640" height="384" aria-label="冒険の地図"></canvas><div class="panel"><div id="log" aria-live="polite"></div><div id="actions"></div></div><div id="pad"><span></span><button data-dir="0,-1">↑</button><span></span><button data-dir="-1,0">←</button><button id="talk">話す</button><button data-dir="1,0">→</button><span></span><button data-dir="0,1">↓</button></div><footer>移動：矢印 / WASD　会話・調べる：Space / Enter　｜　村の外では魔物に遭遇します。進行は自動保存されます。<br>宝箱：近くでSpaceまたは「宝箱を開ける」。中身は薬草・お金・毒・魔物！ 毒は薬草か村で治療。<br>目的：森の北東にいる夜の番人を倒して、星灯りを取り戻そう。</footer><button id="reset">はじめから</button></main>
+<main><header><div><div class="tag">A SMALL FANTASY ADVENTURE</div><h1>星灯りの旅人</h1></div><small>星をなくした森に、灯りを。</small></header><div class="panel" id="stats"></div><canvas id="world" width="640" height="384" aria-label="冒険の地図"></canvas><div class="panel"><div id="log" aria-live="polite"></div><div id="actions"></div></div><div id="pad"><span></span><button data-dir="0,-1">↑</button><span></span><button data-dir="-1,0">←</button><button id="talk">調査</button><button data-dir="1,0">→</button><span></span><button data-dir="0,1">↓</button></div><footer>移動：矢印 / WASD　会話・調べる：Space / Enter　｜　村の外では魔物に遭遇します。進行は自動保存されます。<br>宝箱：「調べる」かSpaceで探索すると、まれに発見。同じ場所は1回のみ。階段では「上る・降りる」ボタンで移動。<br>目的：森の北東から地下へ入り、地下3階の夜の番人を倒そう。地上＋地下3階、各40×26マス。</footer><button id="reset">はじめから</button></main>
 <script>
 const canvas=document.querySelector('canvas'),c=canvas.getContext('2d'),$=s=>document.querySelector(s);
-const map=['####################','#......#.......B...#','#..TT..#..TT.......#','#......#...........#','#......#....TT.....#','#......#...........#','#..................#','#..HH..#...........#','#..NN..#..TT.......#','#......#...........#','#......#...........#','####################'];
-let p={x:3,y:9,hp:30,max:30,mp:12,level:1,xp:0,gold:0,herbs:3,won:false,poison:0,chests:[]},enemy=null,busy=false,steps=0;
-try{const saved=JSON.parse(localStorage.getItem('starlight-rpg'));if(saved&&Number.isFinite(saved.hp))p={...p,...saved}}catch{}
+const MAP_W=40,MAP_H=26;
+function createMap(floor){
+ const grid=Array.from({length:MAP_H},(_,y)=>Array.from({length:MAP_W},(_,x)=>x===0||y===0||x===MAP_W-1||y===MAP_H-1?'#':'.'));
+ if(floor===0){
+  for(let y=2;y<23;y++)for(let x=8;x<38;x++)if((x*13+y*7)%29===0)grid[y][x]='T';
+  grid[7][3]=grid[7][4]='H';grid[8][3]=grid[8][4]='N';grid[5][33]='>';
+ }else{
+  for(let x=9;x<36;x+=9)for(let y=1;y<25;y++)if(y!==4+floor&&y!==17-floor&&y!==22)grid[y][x]='#';
+  for(let y=10;y<=18;y+=8)for(let x=10;x<38;x++)if(x!==14+floor&&x!==31-floor)grid[y][x]='#';
+  grid[3][3]='<';if(floor<3)grid[21][35]='>';else grid[21][35]='B';
+ }
+ return grid.map(row=>row.join(''));
+}
+const maps=[0,1,2,3].map(createMap);
+let map=maps[0];
+function floorName(){return p.floor===0?'地上・星灯りの森':'星影の地下迷宮 B'+p.floor+'F'}
+function inVillage(){return p.floor===0&&p.x<7&&p.y>=7&&p.y<=10}
+function stairPoint(floor,tile){for(let y=0;y<MAP_H;y++){let x=maps[floor][y].indexOf(tile);if(x>=0)return {x,y}}return null}
+
+let p={x:3,y:9,hp:30,max:30,mp:12,level:1,xp:0,gold:0,herbs:3,won:false,poison:0,chests:[],floor:0,searched:{},worldVersion:2},enemy=null,busy=false,steps=0;
+try{const saved=JSON.parse(localStorage.getItem('starlight-rpg'));if(saved&&Number.isFinite(saved.hp)){p={...p,...saved};if(saved.worldVersion!==2)p.worldVersion=1}}catch{}
+if(!Number.isInteger(p.floor)||p.floor<0||p.floor>3)p.floor=0;
+map=maps[p.floor];
+if(p.worldVersion!==2){p.chests=[];p.searched={};p.worldVersion=2}
+if(!p.searched||typeof p.searched!=='object'||Array.isArray(p.searched))p.searched={};
 if(!Array.isArray(p.chests))p.chests=[];
+if(!Number.isInteger(p.x)||!Number.isInteger(p.y)||!map[p.y]?.[p.x]||'#THN'.includes(map[p.y][p.x])){p.floor=0;map=maps[0];p.x=3;p.y=9}
 if(!Number.isFinite(p.poison)||p.poison<0)p.poison=0;
 let openedChest=null;
-function nearbyChest(){return p.chests.find(ch=>Math.abs(ch.x-p.x)+Math.abs(ch.y-p.y)<=1)}
-function spawnChest(){
- if(p.x<7||p.chests.length>=3||Math.random()>=.16)return false;
- const spots=[];for(let y=1;y<11;y++)for(let x=7;x<19;x++)if(map[y][x]==='.'&&(x!==p.x||y!==p.y)&&Math.abs(x-p.x)+Math.abs(y-p.y)<=4&&!p.chests.some(ch=>ch.x===x&&ch.y===y))spots.push({x,y});
- if(!spots.length)return false;p.chests.push(spots[Math.floor(Math.random()*spots.length)]);return true;
+function nearbyChest(){return p.chests.find(ch=>ch.floor===p.floor&&Math.abs(ch.x-p.x)+Math.abs(ch.y-p.y)<=1)}
+function search(){
+ if(enemy||busy)return;
+ if(nearbyChest()){openChest();return}
+ if(inVillage()){talk();return}
+ const tile=map[p.y][p.x];
+ if(tile==='>'||tile==='<'){log('階段がある。「'+(tile==='>'?'降りる':'上る')+'」ボタンで移動できます。');idle();return}
+ const key=p.floor+':'+p.x+','+p.y;
+ if(p.searched[key]){log('ここはもう調べた。何も見つからない。');return}
+ p.searched[key]=true;
+ if(tile==='.'&&Math.random()<(p.floor===0?.12:.18)){
+  p.chests.push({x:p.x,y:p.y,floor:p.floor});log('足元を調べると、隠された宝箱を見つけた！ 「宝箱を開ける」で中身を確認しよう。');
+ }else log('辺りを調べたが、何も見つからなかった。');
+ stats();idle();draw();
+}
+function useStairs(direction){
+ if(enemy||busy)return;
+ const tile=map[p.y][p.x];if((direction===1&&tile!=='>')||(direction===-1&&tile!=='<'))return;
+ const next=p.floor+direction;if(next<0||next>3)return;
+ const dest=stairPoint(next,direction===1?'<':'>');if(!dest)return;
+ p.floor=next;map=maps[next];p.x=dest.x;p.y=dest.y;
+ motion.x=motion.fromX=p.x*32;motion.y=motion.fromY=p.y*32;motion.start=-1000;
+ openedChest=null;effect=null;stats();idle();draw();log(floorName()+'に'+(direction===1?'降りた。':'戻った。')+' 帰りはこの階段で移動できます。');
+}
+function drawStairs(x,y,tile){
+ c.fillStyle='#151a29';c.fillRect(x+3,y+3,26,26);
+ for(let i=0;i<5;i++){c.fillStyle=i%2?'#8e9da7':'#bcc5bd';c.fillRect(x+5+i*3,y+7+i*4,21-i*3,3)}
+ c.fillStyle=tile==='>'?'#edc878':'#9ee2dc';c.font='bold 15px system-ui';c.textAlign='center';c.fillText(tile==='>'?'↓':'↑',x+16,y+18);c.textAlign='left';
 }
 function drawChest(ch,opened=false){const x=ch.x*32,y=ch.y*32;
  c.fillStyle='#16243288';c.fillRect(x+4,y+26,25,4);c.fillStyle='#6c3d2c';c.fillRect(x+5,y+14,23,14);c.fillStyle='#e4b75e';c.fillRect(x+5,y+14,3,14);c.fillRect(x+25,y+14,3,14);
@@ -33,7 +79,7 @@ function openChest(){
 }
 function save(){try{localStorage.setItem('starlight-rpg',JSON.stringify(p))}catch{}}
 function log(t){$('#log').textContent=t}function buttons(items){$('#actions').replaceChildren();items.forEach(([label,fn])=>{let b=document.createElement('button');b.textContent=label;b.onclick=fn;$('#actions').append(b)})}
-function stats(){$('#stats').textContent=`旅人 リオ　 Lv.${p.level}　 HP ${p.hp} / ${p.max}　 MP ${p.mp} / 12　 ${p.gold} G　 薬草 ${p.herbs}　 EXP ${p.xp}${p.poison>0?`　 ☠ 毒 あと${p.poison}歩`:""}`;save()}
+function stats(){$('#stats').textContent=`${floorName()}　｜　旅人 リオ　 Lv.${p.level}　 HP ${p.hp} / ${p.max}　 MP ${p.mp} / 12　 ${p.gold} G　 薬草 ${p.herbs}　 EXP ${p.xp}${p.poison>0?`　 ☠ 毒 あと${p.poison}歩`:""}`;save()}
 const motion={x:p.x*32,y:p.y*32,fromX:p.x*32,fromY:p.y*32,start:-1000,duration:150,face:'down'};
 let frameTime=performance.now(),effect=null,enemyLunge=-1000;
 const reducedMotion=matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -70,16 +116,17 @@ function drawEffect(){if(!effect)return;const q=(frameTime-effect.start)/effect.
  else if(effect.kind==='magic'){c.strokeStyle='#abdeff';c.lineWidth=4;c.beginPath();c.arc(320,200,25+q*75,0,Math.PI*2);c.stroke();for(let i=0;i<8;i++){let a=i*Math.PI/4+q*2;c.fillStyle='#fff1ab';c.fillRect(318+Math.cos(a)*q*100,198+Math.sin(a)*q*85,6,6)}}
  else{c.strokeStyle='#fff2c9';c.lineWidth=6;c.beginPath();c.moveTo(275+q*35,145+q*35);c.lineTo(350+q*20,235+q*20);c.stroke()}
  if(effect.damage){c.fillStyle=effect.kind==='hurt'?'#ffb3a9':'#fff2a5';c.font='bold 26px system-ui';c.textAlign='center';c.fillText('-'+effect.damage,320,130-q*30)}c.restore()}
-function draw(){c.clearRect(0,0,640,384);map.forEach((row,y)=>[...row].forEach((tile,x)=>{let a=x*32,b=y*32;c.fillStyle=(x+y)%2?'#365f49':'#325a44';c.fillRect(a,b,32,32);c.fillStyle='#58805a';c.fillRect(a+5,b+10,2,3);if(x<7&&y>6){c.fillStyle='#b9a778';c.fillRect(a,b,32,32)}if(tile==='#'||tile==='T'){c.fillStyle='#203b38';c.fillRect(a,b,32,32);c.fillStyle='#142f30';c.fillRect(a+13,b+15,6,17);c.fillStyle='#397263';c.beginPath();c.moveTo(a+16,b+1);c.lineTo(a+31,b+24);c.lineTo(a+1,b+24);c.fill()}if(tile==='H'){c.fillStyle='#b9a07a';c.fillRect(a+2,b+12,28,20);c.fillStyle='#a6574d';c.beginPath();c.moveTo(a,b+14);c.lineTo(a+16,b+1);c.lineTo(a+32,b+14);c.fill();c.fillStyle='#f3d78f';c.fillRect(a+11,b+19,10,13)}if(tile==='N')person(a,b,x===3?'#dcb468':'#b7a0ca',x*1.7);if(tile==='B'&&!p.won)monster(a+16,b+19,.23,true,'',1)}));p.chests.forEach(ch=>drawChest(ch));if(openedChest&&frameTime<openedChest.until)drawChest(openedChest,true);person(motion.x,motion.y,'#7abed9',0,true);if(enemy){c.fillStyle='#0b1526f2';c.fillRect(48,36,544,310);c.fillStyle='#e9dbb4';c.font='20px system-ui';c.textAlign='center';c.fillText(enemy.name,320,80);monster(320,208,1,enemy.boss,enemy.name);c.fillStyle='#edce88';c.fillText(`HP ${enemy.hp} / ${enemy.max}`,320,310);c.textAlign='left'}drawEffect()}
-function idle(){buttons([...(nearbyChest()? [['宝箱を開ける',openChest]]:[]),['話す・調べる',talk],['薬草を使う',herb]])}
+function draw(){c.clearRect(0,0,640,384);const cameraX=Math.max(0,Math.min(MAP_W*32-640,motion.x-304)),cameraY=Math.max(0,Math.min(MAP_H*32-384,motion.y-176));c.save();c.translate(-Math.round(cameraX),-Math.round(cameraY));map.forEach((row,y)=>[...row].forEach((tile,x)=>{let a=x*32,b=y*32;c.fillStyle=p.floor>0?((x+y)%2?'#343947':'#303541'):((x+y)%2?'#365f49':'#325a44');c.fillRect(a,b,32,32);c.fillStyle='#58805a';c.fillRect(a+5,b+10,2,3);if(p.floor===0&&x<7&&y>6&&y<=10){c.fillStyle='#b9a778';c.fillRect(a,b,32,32)}if(tile==='#'||tile==='T'){c.fillStyle='#203b38';c.fillRect(a,b,32,32);c.fillStyle='#142f30';c.fillRect(a+13,b+15,6,17);c.fillStyle='#397263';c.beginPath();c.moveTo(a+16,b+1);c.lineTo(a+31,b+24);c.lineTo(a+1,b+24);c.fill()}if(p.floor>0&&tile==='#'){c.fillStyle='#52586b';c.fillRect(a,b,32,27);c.fillStyle='#72758a';c.fillRect(a+2,b+2,28,3)}if(tile==='>'||tile==='<')drawStairs(a,b,tile);if(tile==='H'){c.fillStyle='#b9a07a';c.fillRect(a+2,b+12,28,20);c.fillStyle='#a6574d';c.beginPath();c.moveTo(a,b+14);c.lineTo(a+16,b+1);c.lineTo(a+32,b+14);c.fill();c.fillStyle='#f3d78f';c.fillRect(a+11,b+19,10,13)}if(tile==='N')person(a,b,x===3?'#dcb468':'#b7a0ca',x*1.7);if(tile==='B'&&!p.won)monster(a+16,b+19,.23,true,'',1)}));p.chests.filter(ch=>ch.floor===p.floor).forEach(ch=>drawChest(ch));if(openedChest&&openedChest.floor===p.floor&&frameTime<openedChest.until)drawChest(openedChest,true);person(motion.x,motion.y,'#7abed9',0,true);c.restore();if(enemy){c.fillStyle='#0b1526f2';c.fillRect(48,36,544,310);c.fillStyle='#e9dbb4';c.font='20px system-ui';c.textAlign='center';c.fillText(enemy.name,320,80);monster(320,208,1,enemy.boss,enemy.name);c.fillStyle='#edce88';c.fillText(`HP ${enemy.hp} / ${enemy.max}`,320,310);c.textAlign='left'}drawEffect()}
+function idle(){const tile=map[p.y][p.x];buttons([...(tile==='>'?[['降りる ▼',()=>useStairs(1)]]:tile==='<'?[['上る ▲',()=>useStairs(-1)]]:[]),...(nearbyChest()?[['宝箱を開ける',openChest]]:[]),['調べる',search],['話す',talk],['薬草を使う',herb]])}
 function heal(){p.hp=p.max;p.mp=12;p.poison=0;stats();log('宿の主人「おかえり。ゆっくり休んでいきなさい。」HPとMPが全回復した！')}
-function talk(){if(enemy||busy)return;if(nearbyChest()){openChest();return}if(p.x<7&&p.y>=7){heal();log(p.won?'村人「星が戻った！ ありがとう、リオ！」 冒険クリア！ 自由に探索を続けられます。':'村人「北東の夜の番人が、森の星を隠してしまった。まずは魔物と戦って力をつけて。ここに戻れば無料で休めるよ。」 HP・MPが全回復した。')}else log('風が草木を揺らしている。北東に、かすかな星の気配がする。')}
+function talk(){if(enemy||busy)return;if(nearbyChest()){openChest();return}if(inVillage()){heal();log(p.won?'村人「星が戻った！ ありがとう、リオ！」 冒険クリア！ 自由に探索を続けられます。':'村人「森の北東に地下迷宮への階段がある。地下3階の夜の番人が星を隠してしまった。まずは魔物と戦って力をつけて。ここに戻れば無料で休めるよ。」 HP・MPが全回復した。')}else log(p.floor>0?'地下迷宮に声が響く……近くに話せる人はいない。':'近くに話せる人はいない。森の北東に地下への階段がある。')}
 function herb(){if(busy)return;if(!p.herbs){log('薬草がない。村へ戻れば休める。');return}if(p.hp===p.max&&!p.poison){log('HPは満タンだ。');return}p.herbs--;p.hp=Math.min(p.max,p.hp+22);p.poison=0;stats();log('薬草でHPが22回復した！ 毒も治った。');if(enemy)retaliate()}
 function encounter(boss=false){enemy={name:boss?'夜の番人':Math.random()<.5?'森のぷるり':'こけ玉',hp:boss?55:14+p.level*3,max:boss?55:14+p.level*3,boss};log(boss?'夜の番人「星灯りは渡さぬ……！」':'草むらから魔物が現れた！');buttons([['たたかう',()=>attack(false)],['星の魔法 · MP 3',()=>attack(true)],['薬草',herb],['にげる',()=>{if(busy)return;if(enemy.boss){log('番人からは逃げられない！');return}enemy=null;log('うまく逃げきった！');idle();draw()}]]);draw()}
 function attack(magic){if(!enemy||busy)return;if(magic&&p.mp<3){log('MPが足りない！');return}if(magic)p.mp-=3;let damage=magic?13+p.level*3:5+p.level*3+Math.floor(Math.random()*5);effect={kind:magic?'magic':'slash',start:performance.now(),duration:480,damage};enemy.hp=Math.max(0,enemy.hp-damage);log(`${magic?'星の魔法':'剣の一撃'}！ ${damage}のダメージ！`);stats();draw();if(enemy.hp===0){busy=true;setTimeout(()=>{const boss=enemy.boss;enemy=null;p.gold+=boss?50:8;p.xp+=boss?30:10;p.herbs+=Math.random()<.4?1:0;let leveled=false;while(p.xp>=p.level*20){p.xp-=p.level*20;p.level++;p.max+=8;p.hp=p.max;p.mp=12;leveled=true}if(boss)p.won=true;log(boss?'番人を倒し、星灯りを取り戻した！ 村に帰ってみんなに知らせよう。':`魔物を倒した！ 10 EXP・8 G を獲得。${leveled?'レベルアップ！ HP・MPが全回復した！':''}`);busy=false;stats();idle();draw()},480);return}retaliate()}
-function retaliate(){busy=true;setTimeout(()=>{if(!enemy){busy=false;return}let dmg=enemy.boss?Math.max(3,12-p.level):2+Math.floor(Math.random()*4);enemyLunge=performance.now();effect={kind:'hurt',start:performance.now(),duration:320,damage:dmg};p.hp=Math.max(0,p.hp-dmg);log(`${enemy.name}の攻撃！ ${dmg}のダメージ。`);busy=false;if(p.hp===0){enemy=null;p.x=3;p.y=9;motion.x=motion.fromX=96;motion.y=motion.fromY=288;motion.start=-1000;p.hp=p.max;p.mp=12;p.poison=0;p.gold=Math.floor(p.gold/2);log('倒れてしまった……村人に助けられた。所持金が半分になった。');idle()}stats();draw()},550)}
-function move(dx,dy){if(enemy||busy||performance.now()-motion.start<motion.duration)return;motion.face=dx<0?'left':dx>0?'right':dy<0?'up':'down';const x=p.x+dx,y=p.y+dy,t=map[y]?.[x];if(!t||'#THN'.includes(t))return;motion.fromX=motion.x;motion.fromY=motion.y;motion.start=performance.now();p.x=x;p.y=y;steps++;let poisonMessage='';if(p.poison>0){const damage=Math.min(2,Math.max(0,p.hp-1));p.hp-=damage;p.poison--;poisonMessage=' 毒でHPが'+damage+'減った。'+(p.poison===0?'毒が抜けた！':'')}const found=spawnChest();if(t==='B'&&!p.won)encounter(true);else if(!nearbyChest()&&x>=7&&steps%5===0&&Math.random()<.8)encounter();else{log((nearbyChest()?'宝箱を見つけた！ 「宝箱を開ける」かSpaceで開けられます。':found?'近くの森に宝箱が現れた！':x<7&&y>6?'灯りの村。近くで「話す」を選ぶと休めます。':'ささやきの森を歩いている……')+poisonMessage);idle()}if(enemy&&poisonMessage)log($('#log').textContent+poisonMessage);stats();draw()}
-document.addEventListener('keydown',e=>{if(e.target.tagName==='BUTTON'&&(e.key==='Enter'||e.key===' '))return;const d={ArrowUp:[0,-1],w:[0,-1],ArrowDown:[0,1],s:[0,1],ArrowLeft:[-1,0],a:[-1,0],ArrowRight:[1,0],d:[1,0]}[e.key];if(d){e.preventDefault();move(...d)}else if(e.key===' '||e.key==='Enter'){e.preventDefault();talk()}});document.querySelectorAll('[data-dir]').forEach(b=>b.onclick=()=>move(...b.dataset.dir.split(',').map(Number)));$('#talk').onclick=talk;$('#reset').onclick=()=>{if(confirm('冒険の記録を消して、最初から始めますか？')){try{localStorage.removeItem('starlight-rpg')}catch{}location.reload()}};stats();idle();draw();log('旅人リオの冒険が始まる。村で話を聞いてから、東の森へ出かけよう。');
+function retaliate(){busy=true;setTimeout(()=>{if(!enemy){busy=false;return}let dmg=enemy.boss?Math.max(3,12-p.level):2+Math.floor(Math.random()*4);enemyLunge=performance.now();effect={kind:'hurt',start:performance.now(),duration:320,damage:dmg};p.hp=Math.max(0,p.hp-dmg);log(`${enemy.name}の攻撃！ ${dmg}のダメージ。`);busy=false;if(p.hp===0){enemy=null;p.floor=0;map=maps[0];p.x=3;p.y=9;motion.x=motion.fromX=96;motion.y=motion.fromY=288;motion.start=-1000;p.hp=p.max;p.mp=12;p.poison=0;p.gold=Math.floor(p.gold/2);log('倒れてしまった……村人に助けられた。所持金が半分になった。');idle()}stats();draw()},550)}
+function move(dx,dy){if(enemy||busy||performance.now()-motion.start<motion.duration)return;motion.face=dx<0?'left':dx>0?'right':dy<0?'up':'down';const x=p.x+dx,y=p.y+dy,t=map[y]?.[x];if(!t||'#THN'.includes(t))return;motion.fromX=motion.x;motion.fromY=motion.y;motion.start=performance.now();p.x=x;p.y=y;steps++;let poisonMessage='';if(p.poison>0){const damage=Math.min(2,Math.max(0,p.hp-1));p.hp-=damage;p.poison--;poisonMessage=' 毒でHPが'+damage+'減った。'+(p.poison===0?'毒が抜けた！':'')}if(t==='B'&&!p.won)encounter(true);else if(t!== '>'&&t!=='<'&&!inVillage()&&steps%7===0&&Math.random()<.65)encounter();else{log((t==='>'?'下り階段に着いた。「降りる」ボタンで地下へ。':t==='<'?'上り階段に着いた。「上る」ボタンで前の階へ。':nearbyChest()?'見つけた宝箱がある。「宝箱を開ける」で確認しよう。':inVillage()?'灯りの村。「話す」で休めます。':floorName()+'を探索中。「調べる」で隠れた宝箱が見つかることも。')+poisonMessage);idle()}if(enemy&&poisonMessage)log($('#log').textContent+poisonMessage);stats();draw()}
+
+document.addEventListener('keydown',e=>{if(e.target.tagName==='BUTTON'&&(e.key==='Enter'||e.key===' '))return;const d={ArrowUp:[0,-1],w:[0,-1],ArrowDown:[0,1],s:[0,1],ArrowLeft:[-1,0],a:[-1,0],ArrowRight:[1,0],d:[1,0]}[e.key];if(d){e.preventDefault();move(...d)}else if(e.key===' '||e.key==='Enter'){e.preventDefault();search()}});document.querySelectorAll('[data-dir]').forEach(b=>b.onclick=()=>move(...b.dataset.dir.split(',').map(Number)));$('#talk').onclick=search;$('#reset').onclick=()=>{if(confirm('冒険の記録を消して、最初から始めますか？')){try{localStorage.removeItem('starlight-rpg')}catch{}location.reload()}};stats();idle();draw();log('探索を始めよう。森の北東に地下への階段がある。地下3階の番人を目指そう！');
 function animate(now){frameTime=now;const q=reducedMotion?1:Math.min(1,Math.max(0,(now-motion.start)/motion.duration));motion.x=motion.fromX+(p.x*32-motion.fromX)*q;motion.y=motion.fromY+(p.y*32-motion.fromY)*q;draw();requestAnimationFrame(animate)}
 requestAnimationFrame(animate);
 </script></html>
